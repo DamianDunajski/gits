@@ -1,0 +1,118 @@
+#!/bin/bash
+exec scala -save "$0" "$@"
+!#
+
+import java.io.File
+
+import scala.io.Source
+import scala.language.postfixOps
+import scala.sys.process._
+import scala.util.{Failure, Success, Try}
+
+val supportedCommands: List[String] = List("add", "merge-index", "add--interactive", "merge-octopus", "am", "merge-one-file", "annotate", "merge-ours", "apply", "merge-recursive", "archimport", "merge-resolve", "archive", "merge-subtree", "bisect", "merge-tree", "bisect--helper", "mergetool", "blame", "mktag", "branch", "mktree", "bundle", "mv", "cat-file", "name-rev", "check-attr", "notes", "check-ignore", "p4", "check-mailmap", "pack-objects", "check-ref-format", "pack-redundant", "checkout", "pack-refs", "checkout-index", "patch-id", "cherry", "prune", "cherry-pick", "prune-packed", "citool", "pull", "clean", "push", "clone", "quiltimport", "column", "read-tree", "commit", "rebase", "commit-tree", "receive-pack", "config", "reflog", "count-objects", "relink", "credential", "remote", "credential-cache", "remote-ext", "credential-cache--daemon", "remote-fd", "credential-store", "remote-ftp", "cvsexportcommit", "remote-ftps", "cvsimport", "remote-http", "cvsserver", "remote-https", "daemon", "remote-testsvn", "describe", "repack", "diff", "replace", "diff-files", "request-pull", "diff-index", "rerere", "diff-tree", "reset", "difftool", "rev-list", "difftool--helper", "rev-parse", "fast-export", "revert", "fast-import", "rm", "fetch", "send-email", "fetch-pack", "send-pack", "filter-branch", "sh-i18n--envsubst", "fmt-merge-msg", "shell", "for-each-ref", "shortlog", "format-patch", "show", "fsck", "show-branch", "fsck-objects", "show-index", "gc", "show-ref", "get-tar-commit-id", "stage", "grep", "stash", "gui", "status", "gui--askpass", "stripspace", "hash-object", "submodule", "help", "svn", "http-backend", "symbolic-ref", "http-fetch", "tag", "http-push", "unpack-file", "imap-send", "unpack-objects", "index-pack", "update-index", "init", "update-ref", "init-db", "update-server-info", "instaweb", "upload-archive", "log", "upload-pack", "ls-files", "var", "ls-remote", "verify-commit", "ls-tree", "verify-pack", "mailinfo", "verify-tag", "mailsplit", "web--browse", "merge", "whatchanged", "merge-base", "write-tree", "merge-file")
+
+object Repository {
+  def apply(remotePath: String): Repository = {
+    new Repository(remotePath, remotePath.substring(remotePath.lastIndexOf("/") + 1))
+  }
+}
+
+object Input {
+  def apply(command: String): Input = {
+    new Input(List(), command, List())
+  }
+
+  def apply(args: List[String]): Input = {
+    Try(args.filter(supportedCommands.contains(_))(0)) match {
+      case Success(command) =>
+        val commandIdx: Int = args.indexOf(command)
+        new Input(args.slice(0, commandIdx), command, args.slice(commandIdx + 1, args.length))
+      case Failure(ex) => Input("help")
+    }
+  }
+}
+
+val rootPath: String = findRootPath(new File(".").getCanonicalFile)
+val masterRepository: Repository = Repository(rootPath)
+
+val slaveRepositories: Set[Repository] = registerSlaveRepositories()
+val commandProcessors: Map[String, CommandProcessor] = registerCommandProcessors()
+
+val defaultProcessor: DelegateProcessor = new DelegateProcessor
+
+executeGitCommand(Input(args.toList))
+
+//try {
+//} catch {
+//  case ex: ScriptException => Console.println(s"ERROR: ${ex.getMessage}")
+//  case _ => Console.println("Sorry something went wrong - let us know about this issue")
+//}
+
+def findRootPath(searchDir: File): String = {
+  if (searchDir == null) {
+    throw new IllegalArgumentException("Registry file doesn't exist")
+  }
+  if (new File(s"$searchDir/.gits-modules").exists) searchDir.getPath else findRootPath(searchDir.getParentFile)
+}
+
+def registerSlaveRepositories(): Set[Repository] = {
+  val registryFile = new File(s"$rootPath/.gits-modules")
+  Source.fromFile(registryFile).getLines().map(Repository(_)).toSet
+}
+
+def registerCommandProcessors(): Map[String, CommandProcessor] = {
+  Map[String, CommandProcessor](
+    "help" -> new HelpProcessor,
+    "clone" -> new CloneProcessor
+  )
+}
+
+def executeGitCommand(input: Input) = {
+  println(Try(commandProcessors(input.command)).getOrElse(defaultProcessor).process(input))
+}
+
+case class Repository(remoteUrl: String, localPath: String)
+
+case class Input(gitArgs: List[String], command: String, commandArgs: List[String])
+
+abstract class CommandProcessor {
+
+  def process(input: Input): String = {
+    process(input.gitArgs, input.command, input.commandArgs)
+  }
+
+  def process(gitArgs: List[String], command: String, commandArgs: List[String]): String = {
+    val invokable = List("git", gitArgs.mkString(" "), command, commandArgs.mkString(" ")).filterNot(_.isEmpty).mkString(" ")
+    postProcessing(Try(invokable !!).getOrElse("Processing failed because of this error."))
+  }
+
+  def postProcessing(result: String): String = result
+}
+
+class HelpProcessor extends CommandProcessor
+
+class CloneProcessor extends CommandProcessor {
+  override def process(input: Input): String = {
+    var output = ""
+    slaveRepositories
+      .filterNot(repository =>
+      new File(repository.localPath).exists
+      )
+      .foreach(repository => {
+      val commandArgs = input.commandArgs :+ s"${repository.remoteUrl} ${repository.localPath}"
+      output += super.process(input.gitArgs, input.command, commandArgs)
+    })
+    output
+  }
+}
+
+class DelegateProcessor extends CommandProcessor {
+  override def process(input: Input): String = {
+    var output = ""
+    slaveRepositories.foreach(repository => {
+      val gitArgs = input.gitArgs :+ s"-C $rootPath/${repository.localPath}"
+      output += super.process(gitArgs, input.command, input.commandArgs)
+    })
+    output
+  }
+}
