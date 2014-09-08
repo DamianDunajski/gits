@@ -93,26 +93,24 @@ class HelpProcessor extends CommandProcessor
 
 class CloneProcessor extends CommandProcessor {
   override def process(input: Input): String = {
-    var output = ""
-    slaveRepositories
-      .filterNot(repository =>
+    slaveRepositories.filterNot(repository =>
       new File(repository.localPath).exists
-      )
-      .foreach(repository => {
+    ).map(repository => {
       val commandArgs = input.commandArgs :+ s"${repository.remoteUrl} ${repository.localPath}"
-      output += super.process(input.gitArgs, input.command, commandArgs)
-    })
-    output
+      super.process(input.gitArgs, input.command, commandArgs)
+    }).mkString
   }
 }
 
 class DelegateProcessor extends CommandProcessor {
   override def process(input: Input): String = {
-    var output = ""
-    slaveRepositories.foreach(repository => {
+    case class RepositoryOutput(repository: String, output: String)
+
+    slaveRepositories.map(repository => {
       val gitArgs = input.gitArgs :+ s"-C $rootPath/${repository.localPath}"
-      output += super.process(gitArgs, input.command, input.commandArgs)
-    })
-    output
+      new RepositoryOutput(repository.localPath, super.process(gitArgs, input.command, input.commandArgs))
+    }).groupBy(_.output).map(entry => {
+      s"On (${entry._2.map(_.repository).mkString(", ")})\n\n${entry._1}\n"
+    }).mkString
   }
 }
