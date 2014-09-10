@@ -83,7 +83,10 @@ abstract class CommandProcessor {
 
   def process(gitArgs: List[String], command: String, commandArgs: List[String]): String = {
     val invokable = List("git", gitArgs.mkString(" "), command, commandArgs.mkString(" ")).filterNot(_.isEmpty).mkString(" ")
-    postProcessing(Try(invokable !!).getOrElse("Processing failed because of this error."))
+
+    val output = new StringBuilder
+    invokable ! ProcessLogger(output.append(_).append("\n"))
+    postProcessing(output.toString())
   }
 
   def postProcessing(result: String): String = result
