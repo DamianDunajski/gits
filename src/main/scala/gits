@@ -68,7 +68,21 @@ def registerCommandProcessors(): Map[String, CommandProcessor] = {
 }
 
 def executeGitCommand(input: Input) = {
-  println(Try(commandProcessors(input.command)).getOrElse(defaultProcessor).process(input))
+  print(Try(commandProcessors(input.command)).getOrElse(defaultProcessor).process(input))
+
+  def print(output: String): Unit = {
+    output.split("\n").foreach(line => {
+      if (line matches "On \\(.*\\)") {
+        println(Console.BLUE + line + Console.RESET)
+      } else if (line matches "\\s{0,}\\+.*") {
+        println(Console.GREEN + line + Console.RESET)
+      } else if (line matches "\\s{0,}\\-.*") {
+        println(Console.RED + line + Console.RESET)
+      } else {
+        println(line)
+      }
+    })
+  }
 }
 
 case class Repository(remoteUrl: String, localPath: String)
@@ -86,10 +100,8 @@ abstract class CommandProcessor {
 
     val output = new StringBuilder
     invokable ! ProcessLogger(output.append(_).append("\n"))
-    postProcessing(output.toString())
+    output.toString()
   }
-
-  def postProcessing(result: String): String = result
 }
 
 class HelpProcessor extends CommandProcessor
