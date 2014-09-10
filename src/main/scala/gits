@@ -98,7 +98,7 @@ abstract class CommandProcessor {
   }
 
   def process(gitArgs: List[String], command: String, commandArgs: List[String]): String = {
-    val invokable = List("git", gitArgs.mkString(" "), command, commandArgs.mkString(" ")).filterNot(_.isEmpty).mkString(" ")
+    val invokable = "git" :: gitArgs ::: command :: commandArgs
 
     val output = new StringBuilder
     invokable ! ProcessLogger(output.append(_).append("\n"))
@@ -124,7 +124,7 @@ class DelegateProcessor extends CommandProcessor {
     case class RepositoryOutput(repository: String, output: String)
 
     slaveRepositories.map(repository => {
-      val gitArgs = input.gitArgs :+ s"-C $rootPath/${repository.localPath}"
+      val gitArgs = input.gitArgs :+ "-C" :+ s"$rootPath/${repository.localPath}"
       new RepositoryOutput(repository.localPath, super.process(gitArgs, input.command, input.commandArgs))
     }).groupBy(_.output).map(entry => {
       s"Repository (${entry._2.map(_.repository).mkString(", ")})\n\n${entry._1}\n"
