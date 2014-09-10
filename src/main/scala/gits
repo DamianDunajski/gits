@@ -72,8 +72,10 @@ def executeGitCommand(input: Input) = {
 
   def print(output: String): Unit = {
     output.split("\n").foreach(line => {
-      if (line matches "On \\(.*\\)") {
+      if (line matches "Repository \\(.*\\)") {
         println(Console.BLUE + line + Console.RESET)
+      } else if (line matches "On branch .*") {
+        println(Console.YELLOW + line + Console.RESET)
       } else if (line matches "\\s{0,}\\+.*") {
         println(Console.GREEN + line + Console.RESET)
       } else if (line matches "\\s{0,}\\-.*") {
@@ -125,7 +127,7 @@ class DelegateProcessor extends CommandProcessor {
       val gitArgs = input.gitArgs :+ s"-C $rootPath/${repository.localPath}"
       new RepositoryOutput(repository.localPath, super.process(gitArgs, input.command, input.commandArgs))
     }).groupBy(_.output).map(entry => {
-      s"On (${entry._2.map(_.repository).mkString(", ")})\n\n${entry._1}\n"
+      s"Repository (${entry._2.map(_.repository).mkString(", ")})\n\n${entry._1}\n"
     }).mkString
   }
 }
