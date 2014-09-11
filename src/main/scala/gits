@@ -11,7 +11,7 @@ import scala.util.{Failure, Success, Try}
 
 val supportedCommands: List[String] = List("add", "merge-index", "add--interactive", "merge-octopus", "am", "merge-one-file", "annotate", "merge-ours", "apply", "merge-recursive", "archimport", "merge-resolve", "archive", "merge-subtree", "bisect", "merge-tree", "bisect--helper", "mergetool", "blame", "mktag", "branch", "mktree", "bundle", "mv", "cat-file", "name-rev", "check-attr", "notes", "check-ignore", "p4", "check-mailmap", "pack-objects", "check-ref-format", "pack-redundant", "checkout", "pack-refs", "checkout-index", "patch-id", "cherry", "prune", "cherry-pick", "prune-packed", "citool", "pull", "clean", "push", "clone", "quiltimport", "column", "read-tree", "commit", "rebase", "commit-tree", "receive-pack", "config", "reflog", "count-objects", "relink", "credential", "remote", "credential-cache", "remote-ext", "credential-cache--daemon", "remote-fd", "credential-store", "remote-ftp", "cvsexportcommit", "remote-ftps", "cvsimport", "remote-http", "cvsserver", "remote-https", "daemon", "remote-testsvn", "describe", "repack", "diff", "replace", "diff-files", "request-pull", "diff-index", "rerere", "diff-tree", "reset", "difftool", "rev-list", "difftool--helper", "rev-parse", "fast-export", "revert", "fast-import", "rm", "fetch", "send-email", "fetch-pack", "send-pack", "filter-branch", "sh-i18n--envsubst", "fmt-merge-msg", "shell", "for-each-ref", "shortlog", "format-patch", "show", "fsck", "show-branch", "fsck-objects", "show-index", "gc", "show-ref", "get-tar-commit-id", "stage", "grep", "stash", "gui", "status", "gui--askpass", "stripspace", "hash-object", "submodule", "help", "svn", "http-backend", "symbolic-ref", "http-fetch", "tag", "http-push", "unpack-file", "imap-send", "unpack-objects", "index-pack", "update-index", "init", "update-ref", "init-db", "update-server-info", "instaweb", "upload-archive", "log", "upload-pack", "ls-files", "var", "ls-remote", "verify-commit", "ls-tree", "verify-pack", "mailinfo", "verify-tag", "mailsplit", "web--browse", "merge", "whatchanged", "merge-base", "write-tree", "merge-file")
 
-/* --- CLASSES CODE --- */
+/* --- CLASSES DEFINITION --- */
 
 object RepositoryType extends Enumeration {
   type RepositoryType = Value
@@ -99,61 +99,66 @@ class DelegateProcessor(implicit context: ExecutionContext) extends CommandProce
   }
 }
 
-/* --- SCRIPT CODE --- */
+class ScriptException(msg: String) extends RuntimeException(msg)
 
-val rootPath: String = findRootPath(new File(".").getCanonicalFile)
-val repositories: Set[Repository] = registerSlaveRepositories() + Repository.master(rootPath)
+/* --- SCRIPT DEFINITION --- */
 
-implicit val context: ExecutionContext = new ExecutionContext(rootPath, repositories)
+object Script {
+  val rootPath: String = findRootPath(new File(".").getCanonicalFile)
+  val repositories: Set[Repository] = registerSlaveRepositories() + Repository.master(rootPath)
 
-val commandProcessors: Map[String, CommandProcessor] = registerCommandProcessors()
-val defaultProcessor: DelegateProcessor = new DelegateProcessor
+  implicit val context: ExecutionContext = new ExecutionContext(rootPath, repositories)
 
-executeGitCommand(Input(args.toList))
+  val commandProcessors: Map[String, CommandProcessor] = registerCommandProcessors()
+  val defaultProcessor: DelegateProcessor = new DelegateProcessor
 
-//try {
-//} catch {
-//  case ex: ScriptException => Console.println(s"ERROR: ${ex.getMessage}")
-//  case _ => Console.println("Sorry something went wrong - let us know about this issue")
-//}
+  executeGitCommand(Input(args.toList))
 
-def findRootPath(searchDir: File): String = {
-  if (searchDir == null) {
-    throw new IllegalArgumentException("Registry file doesn't exist")
+  def findRootPath(searchDir: File): String = {
+    if (searchDir == null) {
+      throw new ScriptException("Registry file doesn't exist")
+    }
+    if (new File(s"$searchDir/.gits-modules").exists) searchDir.getPath else findRootPath(searchDir.getParentFile)
   }
-  if (new File(s"$searchDir/.gits-modules").exists) searchDir.getPath else findRootPath(searchDir.getParentFile)
-}
 
-def registerSlaveRepositories(): Set[Repository] = {
-  val registryFile = new File(s"$rootPath/.gits-modules")
-  Source.fromFile(registryFile).getLines().map(Repository.slave).toSet
-}
-
-def registerCommandProcessors(): Map[String, CommandProcessor] = {
-  Map[String, CommandProcessor](
-    "help" -> new HelpProcessor,
-    "clone" -> new CloneProcessor
-  )
-}
-
-def executeGitCommand(input: Input) = {
-  print(Try(commandProcessors(input.command)).getOrElse(defaultProcessor).process(input))
-
-  def print(output: String): Unit = {
-    output.split("\n").foreach(line => {
-      if (line matches "Repository \\(.*\\)") {
-        println(Console.BLUE + line + Console.RESET)
-      } else if (line matches "On branch .*") {
-        println(Console.YELLOW + line + Console.RESET)
-      } else if (line matches "\\s{0,}\\+.*") {
-        println(Console.GREEN + line + Console.RESET)
-      } else if (line matches "\\s{0,}\\-.*") {
-        println(Console.RED + line + Console.RESET)
-      } else {
-        println(line)
-      }
-    })
+  def registerSlaveRepositories(): Set[Repository] = {
+    val registryFile = new File(s"$rootPath/.gits-modules")
+    Source.fromFile(registryFile).getLines().map(Repository.slave).toSet
   }
+
+  def registerCommandProcessors(): Map[String, CommandProcessor] = {
+    Map[String, CommandProcessor](
+      "help" -> new HelpProcessor,
+      "clone" -> new CloneProcessor
+    )
+  }
+
+  def executeGitCommand(input: Input) = {
+    print(Try(commandProcessors(input.command)).getOrElse(defaultProcessor).process(input))
+
+    def print(output: String): Unit = {
+      output.split("\n").foreach(line => {
+        if (line matches "Repository \\(.*\\)") {
+          println(Console.BLUE + line + Console.RESET)
+        } else if (line matches "On branch .*") {
+          println(Console.YELLOW + line + Console.RESET)
+        } else if (line matches "\\s{0,}\\+.*") {
+          println(Console.GREEN + line + Console.RESET)
+        } else if (line matches "\\s{0,}\\-.*") {
+          println(Console.RED + line + Console.RESET)
+        } else {
+          println(line)
+        }
+      })
+    }
+  }
+}
+
+/* --- SCRIPT RUN --- */
+
+Try(Script) recover {
+  case ex: ScriptException => Console.println(s"ERROR: ${ex.getMessage}")
+  case _: Throwable => Console.println("Sorry something went wrong - let us know about this issue")
 }
 
 
