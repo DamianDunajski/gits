@@ -94,7 +94,7 @@ class DelegateProcessor(implicit context: ExecutionContext) extends CommandProce
       val gitArgs = input.gitArgs :+ "-C" :+ repository.absolutePath(context.rootPath)
       new RepositoryOutput(repository.path, super.process(gitArgs, input.command, input.commandArgs))
     }).groupBy(_.output).map(entry => {
-      s"Repository (${entry._2.map(_.repository).mkString(", ")})\n\n${entry._1}\n"
+      s"Repository (${entry._2.map(_.repository).toList.sorted.mkString(", ")})\n\n${entry._1}\n"
     }).mkString
   }
 }
